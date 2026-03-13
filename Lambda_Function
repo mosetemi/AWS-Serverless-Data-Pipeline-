@@ -34,7 +34,7 @@ def lambda_handler(event, context):
         # Upload the processed file to the processed data bucket
         processed_file_key = file_key.replace('raw/', 'processed/')
         s3.put_object(
-            Bucket='<CSV_Preprocessor>',
+            Bucket='<YOUR_PROCESSED_BUCKET_NAME>',
             Key=processed_file_key,
             Body=output_csv.getvalue()
         )
