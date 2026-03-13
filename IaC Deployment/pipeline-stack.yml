@@ -1,0 +1,78 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Serverless CSV-to-BI pipeline
+
+Parameters:
+  S3InputBucket:
+    Type: String
+  S3OutputBucket:
+    Type: String
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda-code.zip
+
+Resources:
+  PipelineLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: PipelineS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${S3InputBucket}
+                  - !Sub arn:aws:s3:::${S3InputBucket}/*
+                  - !Sub arn:aws:s3:::${S3OutputBucket}
+                  - !Sub arn:aws:s3:::${S3OutputBucket}/*
+
+  PipelineLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: serverless-data-pipeline-handler
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt PipelineLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref S3InputBucket
+        S3Key: !Ref LambdaCodeS3Key
+      Timeout: 300
+      Environment:
+        Variables:
+          PROCESSED_BUCKET: !Ref S3OutputBucket
+
+  InputBucketNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3InputBucket
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt PipelineLambda.Arn
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PipelineLambda
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::${S3InputBucket}
+
+
+Outputs:
+  PipelineLambdaArn:
+    Value: !GetAtt PipelineLambda.Arn
+    Description: Lambda ARN for pipeline orchestrator
